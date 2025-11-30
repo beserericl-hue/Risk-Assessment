@@ -1,0 +1,283 @@
+[
+  {
+    "section": "1 – Basic Property Information",
+    "question": "What’s the full address of the property?",
+    "answer": "1450 Riverside Commerce Drive, Clearview, Louisiana."
+  },
+  {
+    "section": "1 – Basic Property Information",
+    "question": "What type of facility is this?",
+    "answer": "A commercial office building with an attached warehouse."
+  },
+  {
+    "section": "1 – Basic Property Information",
+    "question": "Approximately when was the building constructed?",
+    "answer": "I think around the late 1990s, but I don't know for sure."
+  },
+  {
+    "section": "1 – Basic Property Information",
+    "question": "What is the total square footage?",
+    "answer": "I don't know the exact number, maybe around 30,000 to 35,000."
+  },
+  {
+    "section": "1 – Basic Property Information",
+    "question": "How many stories does the building have?",
+    "answer": "Two stories in the office and one-story warehouse."
+  },
+
+  {
+    "section": "2 – Site and Surroundings",
+    "question": "Is this building in a FEMA flood zone?",
+    "answer": "Yes, it is in a FEMA flood zone, but I don't know which zone."
+  },
+  {
+    "section": "2 – Site and Surroundings",
+    "question": "Distance to nearest water source?",
+    "answer": "There is a river a few hundred feet behind the property."
+  },
+  {
+    "section": "2 – Site and Surroundings",
+    "question": "Is the surrounding area urban, suburban, or rural?",
+    "answer": "Suburban commercial area."
+  },
+  {
+    "section": "2 – Site and Surroundings",
+    "question": "Is there vegetation near the property that could pose wildfire risk?",
+    "answer": "Yes, some brush and grassy areas nearby."
+  },
+  {
+    "section": "2 – Site and Surroundings",
+    "question": "Has brush been cleared to create defensible space?",
+    "answer": "No, we haven’t done any brush clearing."
+  },
+
+  {
+    "section": "3 – Construction Details",
+    "question": "What is the main structural frame made of?",
+    "answer": "Steel for the office; metal panel for the warehouse."
+  },
+  {
+    "section": "3 – Construction Details",
+    "question": "What material are the exterior walls?",
+    "answer": "Mostly metal siding and some brick."
+  },
+  {
+    "section": "3 – Construction Details",
+    "question": "What type of roof does the facility have?",
+    "answer": "Flat roof on the office, low-slope metal on the warehouse."
+  },
+  {
+    "section": "3 – Construction Details",
+    "question": "When was the roof last replaced?",
+    "answer": "I don't know."
+  },
+  {
+    "section": "3 – Construction Details",
+    "question": "Does the building have any fire-rated separations?",
+    "answer": "There is a rated wall between office and warehouse, I think."
+  },
+
+  {
+    "section": "4 – Roof and Openings",
+    "question": "What material is the roof deck?",
+    "answer": "I don't know for the office; metal for the warehouse."
+  },
+  {
+    "section": "4 – Roof and Openings",
+    "question": "Are there skylights?",
+    "answer": "Yes, a few skylights in the warehouse."
+  },
+  {
+    "section": "4 – Roof and Openings",
+    "question": "Is rooftop equipment anchored?",
+    "answer": "I don't know."
+  },
+  {
+    "section": "4 – Roof and Openings",
+    "question": "Is there any impact- or hail-resistant rating?",
+    "answer": "I don't know."
+  },
+  {
+    "section": "4 – Roof and Openings",
+    "question": "Are windows protected?",
+    "answer": "No protection like shutters or film."
+  },
+
+  {
+    "section": "5 – Occupancy and Use",
+    "question": "Primary business operations?",
+    "answer": "Office work and light assembly with shipping and receiving."
+  },
+  {
+    "section": "5 – Occupancy and Use",
+    "question": "Number of people during business hours?",
+    "answer": "Around 40 to 50 people."
+  },
+  {
+    "section": "5 – Occupancy and Use",
+    "question": "Any hazardous materials?",
+    "answer": "Small amounts of solvents and paints, nothing large."
+  },
+  {
+    "section": "5 – Occupancy and Use",
+    "question": "Are there outside tenants?",
+    "answer": "No."
+  },
+  {
+    "section": "5 – Occupancy and Use",
+    "question": "Operating hours?",
+    "answer": "6 AM to 6 PM."
+  },
+
+  {
+    "section": "6 – Fire Protection Systems",
+    "question": "Does the building have sprinklers?",
+    "answer": "Partially in the warehouse; office is not sprinklered."
+  },
+  {
+    "section": "6 – Fire Protection Systems",
+    "question": "Sprinkler type?",
+    "answer": "I don't know."
+  },
+  {
+    "section": "6 – Fire Protection Systems",
+    "question": "Any known obstructions?",
+    "answer": "Not sure; warehouse racks may obstruct some heads."
+  },
+  {
+    "section": "6 – Fire Protection Systems",
+    "question": "When was the system last inspected?",
+    "answer": "I don't know."
+  },
+  {
+    "section": "6 – Fire Protection Systems",
+    "question": "Fire alarm system type?",
+    "answer": "Local alarm only, not monitored."
+  },
+
+  {
+    "section": "7 – Security and Monitoring",
+    "question": "Intrusion alarm present?",
+    "answer": "No intrusion alarm system."
+  },
+  {
+    "section": "7 – Security and Monitoring",
+    "question": "CCTV coverage?",
+    "answer": "Only one camera at loading dock."
+  },
+  {
+    "section": "7 – Security and Monitoring",
+    "question": "Access control?",
+    "answer": "Standard keyed doors."
+  },
+  {
+    "section": "7 – Security and Monitoring",
+    "question": "Exterior lighting?",
+    "answer": "Minimal lighting at night."
+  },
+  {
+    "section": "7 – Security and Monitoring",
+    "question": "Monitoring service?",
+    "answer": "No monitoring."
+  },
+
+  {
+    "section": "8 – Utilities and Critical Systems",
+    "question": "Main electrical service size?",
+    "answer": "I don't know."
+  },
+  {
+    "section": "8 – Utilities and Critical Systems",
+    "question": "Last electrical upgrade?",
+    "answer": "I don't know."
+  },
+  {
+    "section": "8 – Utilities and Critical Systems",
+    "question": "Type of heating?",
+    "answer": "Gas furnaces and warehouse unit heaters."
+  },
+  {
+    "section": "8 – Utilities and Critical Systems",
+    "question": "Backup power available?",
+    "answer": "No generator or backup system."
+  },
+  {
+    "section": "8 – Utilities and Critical Systems",
+    "question": "Condition of plumbing?",
+    "answer": "Fair—some small leaks previously."
+  },
+
+  {
+    "section": "9 – Maintenance and Management",
+    "question": "Is there preventive maintenance?",
+    "answer": "No formal plan; we fix things when they break."
+  },
+  {
+    "section": "9 – Maintenance and Management",
+    "question": "Roof inspection schedule?",
+    "answer": "Only checked when there's an issue."
+  },
+  {
+    "section": "9 – Maintenance and Management",
+    "question": "Fire system inspection frequency?",
+    "answer": "I don't know."
+  },
+  {
+    "section": "9 – Maintenance and Management",
+    "question": "Hot-work permits used?",
+    "answer": "No formal permit process."
+  },
+  {
+    "section": "9 – Maintenance and Management",
+    "question": "Vendor/contractor safety policy?",
+    "answer": "None in place."
+  },
+
+  {
+    "section": "10 – Natural Hazard (CAT) Exposure",
+    "question": "Has the property experienced flooding?",
+    "answer": "Yes, water intrusion during heavy storms."
+  },
+  {
+    "section": "10 – Natural Hazard (CAT) Exposure",
+    "question": "Flood mitigation measures?",
+    "answer": "None—no barriers, pumps, or valves."
+  },
+  {
+    "section": "10 – Natural Hazard (CAT) Exposure",
+    "question": "Is stormwater management present?",
+    "answer": "Only some parking lot drains."
+  },
+  {
+    "section": "10 – Natural Hazard (CAT) Exposure",
+    "question": "Is there wildfire exposure?",
+    "answer": "Moderate wildfire risk in the region."
+  },
+  {
+    "section": "10 – Natural Hazard (CAT) Exposure",
+    "question": "Any wildfire mitigation efforts?",
+    "answer": "No, we haven't done any specific wildfire mitigation."
+  },
+
+  {
+    "section": "12 – Business Continuity",
+    "question": "Do you have a business continuity plan?",
+    "answer": "Only basic data backup, nothing for operations."
+  },
+  {
+    "section": "12 – Business Continuity",
+    "question": "Backup site identified?",
+    "answer": "No backup site for operations."
+  },
+  {
+    "section": "12 – Business Continuity",
+    "question": "Critical equipment needed after a loss?",
+    "answer": "Shipping and receiving equipment would be critical but we have no plan."
+  },
+
+  {
+    "section": "14 – Review and Confidence",
+    "question": "Confidence in your answers?",
+    "answer": "Low to medium—I don’t know many technical details."
+  }
+]
