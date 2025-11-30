@@ -1,0 +1,623 @@
+{
+  "name": "Webhook JSON to AI Analysis Report Batch Mode",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analysis-report",
+        "authentication": "basicAuth",
+        "options": {}
+      },
+      "id": "f20b83a0-7b19-447c-a1a5-4323ea2d1b16",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -64,
+        -112
+      ],
+      "webhookId": "b34c090f-d5e1-44ba-ad1c-243fd5f21cde",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ODrX0JSfFKtxUR68",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://agiletesting.app.n8n.cloud/webhook-test/risk-evaluation",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1552,
+        -16
+      ],
+      "id": "b51cdba6-3ecf-49ec-a0c5-f164bb58490a",
+      "name": "Write Database"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Domain: {{ $json.domain }}\n\nQuestionnaire answers:\n{{ JSON.stringify($json.questions, null, 2) }}\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "\nYou are a property risk analyst. Evaluate the risk for the {{$json.domain}} domain based on the following Q&A. Respond in structured JSON with fields: name, score, band, topWeaknesses, mitigationSteps30Day.\n\nEvaluate each risk domain based on questionnaire answers. For each domain:\n- Assign a 0–100 risk score\n- Identify the top weaknesses (with question IDs)\n- Provide 30-day actionable mitigation steps\nAlso provide an overall risk score and risk band.\n\nOutput ONLY the JSON. No explanations, no markdown code blocks, just raw JSON, and provide up to 3 mitigation steps per domain, also be concise. Output ONLY valid JSON with no additional text or markdown formatting.\"\n\nOutput a structured JSON risk report\nFormat the report in sytactically correct JSON using this example:\n\nCRITICAL INSTRUCTIONS:\n1. Do not fabricate information, use only the information from the survey and do not change it.\n2. OUTPUT ONLY VALID JSON - no markdown, no explanations, no code blocks\n3. Process ALL {{ $json.totalQuestions }} questions in the survey\n4. Be concise but thorough - maximum 3 mitigation steps per domain\n5. Use the exact schema structure provided\n\n{\n  \"domainResult\": {\n    \"name\": \"Wildfire\",\n    \"score\": 70,\n    \"band\": \"High\",\n    \"topWeaknesses\": [ ... ],\n    \"mitigationSteps30Day\": [ ... ]\n  }\n}\n\nOUTPUT ONLY THE JSON OBJECT - NO OTHER TEXT."
+        }
+      },
+      "id": "3cadb765-1c97-4435-889e-f993a44ae62a",
+      "name": "Analysis Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        544,
+        304
+      ],
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        224,
+        224
+      ],
+      "id": "3c7a654d-537e-47af-9ced-7cbe4cc210a1",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "//let body = items[0].json.body;\n//if (typeof body === 'string') {\n//try {\n//body = JSON.parse(body);\n//} catch (error) {\n//throw new Error('Failed to parse body as JSON: ' + error.message);\n//}\n//}\n//if (!Array.isArray(body)) {\n//throw new Error('Expected \"body\" to be an array, but got: ' + typeof body);\n//}\n//const outputItems = body.map(entry => ({\n//json: {\n//...entry,\n//survey: body,\n//},\n//}));\n//return outputItems;\n// items[0].json holds the array you pasted in your message\nlet arr = items[0].json.body;\n\n// If the array is nested under a property like \"answers\", adjust here:\n// if (Array.isArray(items[0].json.answers)) arr = items[0].json.answers;\n\nif (!Array.isArray(arr)) {\n  throw new Error('Expected root JSON to be an array of Q/A objects');\n}\n\nreturn arr.map((qa, index) => ({\n  json: {\n    index,\n    section: qa.section,\n    question: qa.question,\n    answer: qa.answer\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -112
+      ],
+      "id": "e5fd9b87-66c2-4f45-9bbd-cd40341c4e83",
+      "name": "Extract Questionnaire"
+    },
+    {
+      "parameters": {
+        "jsCode": "function mapSectionToDomain(section) {\n  if (!section) return 'Unknown';\n\n  if (section.startsWith('2 – Site and Surroundings')) {\n    return 'Wildfire'; // also exposure in general\n  }\n  if (section.startsWith('3 – Construction Details')) {\n    return 'Construction'; // also exposure in general\n  }\n  \n  if (section.startsWith('6 – Fire Protection Systems')) {\n    return 'Fire';\n  }\n  if (section.startsWith('7 – Security and Monitoring')) {\n    return 'Security';\n  }\n \n  if (section.startsWith('9 – Maintenance and Management')) {\n    return 'Maintenance & Management';\n  }\n  if (section.startsWith('10 – Natural Hazard (CAT) Exposure')) {\n    return 'Flood / CAT';\n  }\n  if (section.startsWith('12 – Business Continuity')) {\n    return 'Business Continuity';\n  }\n\n  return 'Other';\n}\n\nconst out = [];\n\nfor (const item of items) {\n  const j = item.json;\n\n  out.push({\n    json: {\n      ...j,\n      domain: mapSectionToDomain(j.section)\n    }\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        -112
+      ],
+      "id": "072a2316-15a4-4436-b27d-4ece40f36ea4",
+      "name": "Add Domains"
+    },
+    {
+      "parameters": {
+        "jsCode": "const byDomain = {};\n\nfor (const item of items) {\n  const j = item.json;\n  const domain = j.domain || 'Unknown';\n\n  if (!byDomain[domain]) {\n    byDomain[domain] = [];\n  }\n\n  byDomain[domain].push({\n    section: j.section,\n    question: j.question,\n    answer: j.answer\n  });\n}\n\nconst out = [];\nfor (const [domain, qaList] of Object.entries(byDomain)) {\n  out.push({\n    json: {\n      domain,\n      questions: qaList\n    }\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        160
+      ],
+      "id": "0976e481-703f-4c18-a51c-73905c70e99b",
+      "name": "Split into Domains"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-5-nano"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        528
+      ],
+      "id": "3e8d8b93-5462-4ab4-803a-f4cfe5aa3759",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "N3zJqsCmA4ORz82U",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"property\": {\n    \"address\": \"1450 Riverside Commerce Drive, Clearview, Louisiana.\",\n    \"type\": \"Commercial office with attached warehouse\",\n    \"notes\": \"In a FEMA flood zone with history of water intrusion and no formal mitigation in place.\"\n  },\n  \"overall\": {\n    \"score\": 75,\n    \"band\": \"High\",\n    \"rationale\": [\n      \"Property is in a FEMA flood zone with prior water intrusion and no flood mitigation.\",\n      \"Only basic data backup is in place; no operational business continuity.\",\n      \"Fire protection is partial and poorly documented, with unknown inspection status.\",\n      \"Wildfire exposure is moderate with unmanaged vegetation near the site.\",\n      \"Maintenance practices are reactive rather than preventive.\"\n    ]\n  },\n  \"domains\": [\n    {\n      \"name\": \"Flood\",\n      \"score\": 88,\n      \"band\": \"Critical\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q6\",\n          \"issue\": \"Building confirmed in a FEMA flood zone, but zone details are not known by the manager.\"\n        },\n        {\n          \"questionId\": \"Q46\",\n          \"issue\": \"History of water intrusion during heavy storms, indicating existing flood exposure.\"\n        },\n        {\n          \"questionId\": \"Q47\",\n          \"issue\": \"No flood mitigation measures such as barriers, sump pumps, or backflow valves.\"\n        },\n        {\n          \"questionId\": \"Q48\",\n          \"issue\": \"Only basic parking lot drains; no robust stormwater management system.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Engage your insurance broker or local authority to identify the exact FEMA flood zone and obtain current flood maps for this property.\",\n        \"Schedule a site walk with a contractor or engineer to design temporary flood barriers (e.g., door dams, sandbags, portable flood panels) for doors, loading docks, and low openings.\",\n        \"Install or specify sump pumps for the lowest-risk areas where water typically intrudes, including loading dock and warehouse entry points.\",\n        \"Inspect and clear all existing drains of debris; document where water pools during heavy rain and develop a simple response checklist for staff.\",\n        \"Document a flood response plan: who shuts down power, who moves critical stock off the floor, and where vehicles and key equipment should be relocated before a storm.\"\n      ]\n    },\n    {\n      \"name\": \"Wildfire\",\n      \"score\": 65,\n      \"band\": \"High\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q9\",\n          \"issue\": \"Brush and grassy areas exist near the property that can act as wildfire fuel.\"\n        },\n        {\n          \"questionId\": \"Q10\",\n          \"issue\": \"No brush has been cleared to create defensible space around the building.\"\n        },\n        {\n          \"questionId\": \"Q49\",\n          \"issue\": \"Moderate wildfire exposure in the region with no targeted mitigation efforts.\"\n        },\n        {\n          \"questionId\": \"Q50\",\n          \"issue\": \"No specific wildfire mitigation steps have been implemented to date.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Create at least a 30-foot defensible space around the most exposed sides of the warehouse by cutting back tall grass, brush, and low tree limbs.\",\n        \"Remove or relocate combustible storage (pallets, cardboard, plastic containers) away from exterior walls and loading dock areas.\",\n        \"Engage landscaping or facilities staff to establish a monthly vegetation management routine for the perimeter of the building.\",\n        \"Inspect roof and gutters; remove accumulated leaves, needles, and debris that could catch embers.\",\n        \"Update emergency procedures to include wildfire smoke and ember events, including steps for closing exterior doors and shutting down non-essential ventilation.\"\n      ]\n    },\n    {\n      \"name\": \"Fire\",\n      \"score\": 60,\n      \"band\": \"High\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q26\",\n          \"issue\": \"Sprinkler coverage is only partial in the warehouse; office is not sprinklered.\"\n        },\n        {\n          \"questionId\": \"Q27\",\n          \"issue\": \"Sprinkler system type is unknown, suggesting weak knowledge of protection features.\"\n        },\n        {\n          \"questionId\": \"Q29\",\n          \"issue\": \"Last sprinkler inspection date is unknown, indicating possible inspection gaps.\"\n        },\n        {\n          \"questionId\": \"Q30\",\n          \"issue\": \"Fire alarm is local only and not monitored by a central station.\"\n        },\n        {\n          \"questionId\": \"Q23\",\n          \"issue\": \"Some flammable solvents and paints are stored on-site without clear controls described.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Obtain and review the last sprinkler and fire alarm inspection reports; if none exist in the last year, schedule inspections immediately.\",\n        \"Document the sprinkler system type, coverage, and control valves; post simple instructions near risers and main valves.\",\n        \"Implement basic housekeeping rules for solvents and paints: store in closed containers, in designated cabinets, and away from ignition sources.\",\n        \"Verify that fire extinguishers are present, accessible, and within inspection dates; train key staff on their proper use.\",\n        \"Contact a central monitoring provider to price and plan conversion of the local fire alarm to a monitored system, even if implementation takes longer than 30 days.\"\n      ]\n    },\n    {\n      \"name\": \"Security\",\n      \"score\": 55,\n      \"band\": \"Medium\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q31\",\n          \"issue\": \"No intrusion alarm system is installed.\"\n        },\n        {\n          \"questionId\": \"Q32\",\n          \"issue\": \"Only a single camera at the loading dock; limited CCTV coverage overall.\"\n        },\n        {\n          \"questionId\": \"Q34\",\n          \"issue\": \"Exterior lighting is minimal at night, increasing theft and vandalism risk.\"\n        },\n        {\n          \"questionId\": \"Q35\",\n          \"issue\": \"No external monitoring service is used for alarms or security events.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Add motion-activated LED lighting around main entrances, parking areas, and loading docks to improve visibility at night.\",\n        \"Expand camera coverage to cover primary entrances, parking areas, and the interior of the warehouse near high-value stock.\",\n        \"Establish a key-control log and re-key exterior doors if you have lost track of who holds keys.\",\n        \"Obtain quotes for a basic intrusion alarm with door contacts and a few motion detectors, even if installation occurs after the 30-day window.\",\n        \"Create a simple opening and closing checklist that includes checking doors, windows, and gates for proper locking.\"\n      ]\n    },\n    {\n      \"name\": \"Utilities & Critical Systems\",\n      \"score\": 50,\n      \"band\": \"Medium\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q36\",\n          \"issue\": \"Main electrical service size is unknown, suggesting limited understanding of capacity and loading.\"\n        },\n        {\n          \"questionId\": \"Q37\",\n          \"issue\": \"Last electrical upgrade date is unknown, raising concerns about aging infrastructure.\"\n        },\n        {\n          \"questionId\": \"Q39\",\n          \"issue\": \"No generator or backup power system is available for critical loads.\"\n        },\n        {\n          \"questionId\": \"Q40\",\n          \"issue\": \"Plumbing system has a history of small leaks and is only in fair condition.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Schedule a walkthrough with a licensed electrician to document main service size, panel conditions, and obvious risks.\",\n        \"Identify the most critical electrical loads (IT equipment, emergency lighting, key warehouse functions) and estimate their power requirements.\",\n        \"Develop a simple plan for a portable generator solution dedicated to IT and minimal life-safety loads, even if purchase happens later.\",\n        \"Log all recent plumbing leaks and have a plumber inspect the most problematic areas to prevent future breaks during storms or power loss.\",\n        \"Create a basic utility shut-off map for staff, showing where to turn off gas, water, and main electrical disconnects in an emergency.\"\n      ]\n    },\n    {\n      \"name\": \"Maintenance & Management\",\n      \"score\": 70,\n      \"band\": \"High\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q41\",\n          \"issue\": \"No formal preventive maintenance program; repairs are reactive.\"\n        },\n        {\n          \"questionId\": \"Q42\",\n          \"issue\": \"Roof is inspected only when issues arise rather than on a set schedule.\"\n        },\n        {\n          \"questionId\": \"Q43\",\n          \"issue\": \"Fire system inspection frequency is unknown.\"\n        },\n        {\n          \"questionId\": \"Q44\",\n          \"issue\": \"No formal hot-work permit process for welding or cutting.\"\n        },\n        {\n          \"questionId\": \"Q45\",\n          \"issue\": \"No vendor or contractor safety policy for on-site work.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Create a simple preventive maintenance calendar covering roof checks, gutters/drains, fire equipment inspections, and HVAC filter changes.\",\n        \"Perform and document a basic roof inspection to identify obvious damage, ponding, or blocked drains, especially given the flood risk.\",\n        \"Draft a one-page hot-work permit form and require it for any welding, cutting, or grinding inside or near the building.\",\n        \"Develop a short vendor/contractor safety checklist to review before any contractor begins work on-site.\",\n        \"Assign a single employee as the facilities/risk coordinator responsible for keeping inspection logs and follow-up actions.\"\n      ]\n    },\n    {\n      \"name\": \"Business Continuity\",\n      \"score\": 58,\n      \"band\": \"Medium\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q51\",\n          \"issue\": \"Business continuity plan focuses only on data backup; no plan for maintaining operations after a loss.\"\n        },\n        {\n          \"questionId\": \"Q52\",\n          \"issue\": \"No backup site identified for continuing critical operations.\"\n        },\n        {\n          \"questionId\": \"Q53\",\n          \"issue\": \"Critical equipment and process dependencies are not formally documented or planned for.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"List your top three critical processes (for example, order processing, shipping, and customer service) and identify what each one needs to function (people, systems, space).\",\n        \"Identify a temporary fallback location for office work, such as remote work from home or a small leased office, and document how staff would connect to systems.\",\n        \"Document the minimum equipment, IT, and communications needed to resume operations at a basic level after a building loss.\",\n        \"Expand the existing data backup plan with a simple recovery checklist that describes who restores data, in what order, and how users reconnect.\",\n        \"Conduct a short tabletop exercise with key staff to walk through a flood scenario and record gaps in the current plan.\"\n      ]\n    }\n  ]\n}\n",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1360,
+        432
+      ],
+      "id": "ea90f205-9d78-4394-8811-5bced9fa2a44",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-5-nano"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1408,
+        592
+      ],
+      "id": "966958f9-4242-48cc-9205-e6017cbea18a",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "N3zJqsCmA4ORz82U",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-5-nano"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1136,
+        384
+      ],
+      "id": "8418cfea-406c-482f-bfc0-f4334033ac00",
+      "name": "OpenAI Chat Model3",
+      "credentials": {
+        "openAiApi": {
+          "id": "N3zJqsCmA4ORz82U",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a senior property risk analyst.\n\nYou receive:\n- A single property object with address, type, and notes.\n- A list of domain-level risk results. Each domain has a name, numeric score (0–100), and a band such as Low, Medium, High, or Critical. Some domains may also contain topWeaknesses and mitigationSteps30Day from earlier analysis.\n\nYour job:\n1. Interpret the domain results.\n2. Compute one overall risk score and band for the property.\n3. Explain, in a short list of bullet-style rationale statements, why the overall score and band make sense.\n4. Return a final risk report as a single JSON object in the exact schema below.\n\nRequired output JSON schema:\n\n{\n  \"output\": {\n    \"property\": {\n      \"address\": string,\n      \"type\": string,\n      \"notes\": string\n    },\n    \"overall\": {\n      \"score\": number,         // 0–100, integer\n      \"band\": \"Low\" | \"Medium\" | \"High\" | \"Critical\",\n      \"rationale\": [\n        string,                // 3–7 short bullet-style reasons\n        ...\n      ]\n    },\n    \"domains\": [\n      {\n        \"name\": string,\n        \"score\": number,       // 0–100\n        \"band\": \"Low\" | \"Medium\" | \"High\" | \"Critical\",\n        \"topWeaknesses\": [\n          {\n            \"questionId\": string | null,\n            \"issue\": string\n          }\n        ],\n        \"mitigationSteps30Day\": [\n          string\n        ]\n      }\n    ]\n  }\n}\n\nRules for computing the overall score:\n- Use the domain scores as the primary input.\n- Treat each domain as equally weighted unless the data clearly suggests otherwise.\n- Calculate a reasonable overall score, usually close to the average of domain scores, but you may adjust up or down if one or two domains are clearly driving risk (for example, a single “Critical” flood domain with all others Low).\n- Round the final score to the nearest whole number.\n\nRules for mapping overall score to band:\n- 0–25   → \"Low\"\n- 26–50  → \"Medium\"\n- 51–75  → \"High\"\n- 76–100 → \"Critical\"\n\nRules for the overall rationale list:\n- 3 to 7 bullet-style reasons.\n- Each reason must clearly reference specific domains or themes (for example, \"Flood risk is critical due to FEMA flood zone exposure with no mitigation\").\n- No generic statements like “Overall risk is high.”\n- No invented details; only use information that is consistent with the provided domains and property notes.\n\nRules for domains in the output:\n- You must include every domain you are given. Do not add new domains that do not exist in the input.\n- For each domain:\n  - Preserve its name and score.\n  - Preserve or reasonably adjust its band if needed to keep band and score consistent.\n  - If the input already contains topWeaknesses or mitigationSteps30Day, you may reuse and lightly refine them, but do not invent new technical details.\n  - If a domain has no weaknesses or mitigation steps in the input, you can either leave the arrays empty or create 1–3 very high-level issues and steps that are clearly implied by the domain name and notes (for example, “Wildfire” + “brush near building” can justify a brush-clearing step).\n- All domains in the output must be valid JSON objects as shown in the schema.\n\nFormat and strictness:\n- Return valid JSON only.\n- Do NOT wrap the JSON in markdown code fences.\n- Do NOT include any commentary before or after the JSON.\n- Do NOT include trailing commas.\n- If you are missing information, stay conservative and explain it in the rationale rather than inventing values.\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are given the property context and domain-level risk results in JSON format.\n\nProperty:\nget data from tools where domainname = 'other'\n\nDomain results:\nGet Data From Tools\n\nUsing these inputs, generate the final risk report JSON exactly in the schema described in your instructions, including:\n- output.property (address, type, notes)\n- output.overall (score, band, rationale[])\n- output.domains[] (name, score, band, topWeaknesses[], mitigationSteps30Day[])\n\nReturn ONLY the JSON object. No explanations or markdown.\n"
+        }
+      },
+      "id": "6c839234-a393-47ba-b7ca-e5949273b2e3",
+      "name": "Report Generator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1168,
+        208
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"property\": {\n    \"address\": \"1450 Riverside Commerce Drive, Clearview, Louisiana.\",\n    \"type\": \"Commercial office with attached warehouse\",\n    \"notes\": \"In a FEMA flood zone with history of water intrusion and no formal mitigation in place.\"\n  },\n  \"overall\": {\n    \"score\": 75,\n    \"band\": \"High\",\n    \"rationale\": [\n      \"Property is in a FEMA flood zone with prior water intrusion and no flood mitigation.\",\n      \"Only basic data backup is in place; no operational business continuity.\",\n      \"Fire protection is partial and poorly documented, with unknown inspection status.\",\n      \"Wildfire exposure is moderate with unmanaged vegetation near the site.\",\n      \"Maintenance practices are reactive rather than preventive.\"\n    ]\n  },\n  \"domains\": [\n    {\n      \"name\": \"Flood\",\n      \"score\": 88,\n      \"band\": \"Critical\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q6\",\n          \"issue\": \"Building confirmed in a FEMA flood zone, but zone details are not known by the manager.\"\n        },\n        {\n          \"questionId\": \"Q46\",\n          \"issue\": \"History of water intrusion during heavy storms, indicating existing flood exposure.\"\n        },\n        {\n          \"questionId\": \"Q47\",\n          \"issue\": \"No flood mitigation measures such as barriers, sump pumps, or backflow valves.\"\n        },\n        {\n          \"questionId\": \"Q48\",\n          \"issue\": \"Only basic parking lot drains; no robust stormwater management system.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Engage your insurance broker or local authority to identify the exact FEMA flood zone and obtain current flood maps for this property.\",\n        \"Schedule a site walk with a contractor or engineer to design temporary flood barriers (e.g., door dams, sandbags, portable flood panels) for doors, loading docks, and low openings.\",\n        \"Install or specify sump pumps for the lowest-risk areas where water typically intrudes, including loading dock and warehouse entry points.\",\n        \"Inspect and clear all existing drains of debris; document where water pools during heavy rain and develop a simple response checklist for staff.\",\n        \"Document a flood response plan: who shuts down power, who moves critical stock off the floor, and where vehicles and key equipment should be relocated before a storm.\"\n      ]\n    },\n    {\n      \"name\": \"Wildfire\",\n      \"score\": 65,\n      \"band\": \"High\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q9\",\n          \"issue\": \"Brush and grassy areas exist near the property that can act as wildfire fuel.\"\n        },\n        {\n          \"questionId\": \"Q10\",\n          \"issue\": \"No brush has been cleared to create defensible space around the building.\"\n        },\n        {\n          \"questionId\": \"Q49\",\n          \"issue\": \"Moderate wildfire exposure in the region with no targeted mitigation efforts.\"\n        },\n        {\n          \"questionId\": \"Q50\",\n          \"issue\": \"No specific wildfire mitigation steps have been implemented to date.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Create at least a 30-foot defensible space around the most exposed sides of the warehouse by cutting back tall grass, brush, and low tree limbs.\",\n        \"Remove or relocate combustible storage (pallets, cardboard, plastic containers) away from exterior walls and loading dock areas.\",\n        \"Engage landscaping or facilities staff to establish a monthly vegetation management routine for the perimeter of the building.\",\n        \"Inspect roof and gutters; remove accumulated leaves, needles, and debris that could catch embers.\",\n        \"Update emergency procedures to include wildfire smoke and ember events, including steps for closing exterior doors and shutting down non-essential ventilation.\"\n      ]\n    },\n    {\n      \"name\": \"Fire\",\n      \"score\": 60,\n      \"band\": \"High\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q26\",\n          \"issue\": \"Sprinkler coverage is only partial in the warehouse; office is not sprinklered.\"\n        },\n        {\n          \"questionId\": \"Q27\",\n          \"issue\": \"Sprinkler system type is unknown, suggesting weak knowledge of protection features.\"\n        },\n        {\n          \"questionId\": \"Q29\",\n          \"issue\": \"Last sprinkler inspection date is unknown, indicating possible inspection gaps.\"\n        },\n        {\n          \"questionId\": \"Q30\",\n          \"issue\": \"Fire alarm is local only and not monitored by a central station.\"\n        },\n        {\n          \"questionId\": \"Q23\",\n          \"issue\": \"Some flammable solvents and paints are stored on-site without clear controls described.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Obtain and review the last sprinkler and fire alarm inspection reports; if none exist in the last year, schedule inspections immediately.\",\n        \"Document the sprinkler system type, coverage, and control valves; post simple instructions near risers and main valves.\",\n        \"Implement basic housekeeping rules for solvents and paints: store in closed containers, in designated cabinets, and away from ignition sources.\",\n        \"Verify that fire extinguishers are present, accessible, and within inspection dates; train key staff on their proper use.\",\n        \"Contact a central monitoring provider to price and plan conversion of the local fire alarm to a monitored system, even if implementation takes longer than 30 days.\"\n      ]\n    },\n    {\n      \"name\": \"Security\",\n      \"score\": 55,\n      \"band\": \"Medium\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q31\",\n          \"issue\": \"No intrusion alarm system is installed.\"\n        },\n        {\n          \"questionId\": \"Q32\",\n          \"issue\": \"Only a single camera at the loading dock; limited CCTV coverage overall.\"\n        },\n        {\n          \"questionId\": \"Q34\",\n          \"issue\": \"Exterior lighting is minimal at night, increasing theft and vandalism risk.\"\n        },\n        {\n          \"questionId\": \"Q35\",\n          \"issue\": \"No external monitoring service is used for alarms or security events.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Add motion-activated LED lighting around main entrances, parking areas, and loading docks to improve visibility at night.\",\n        \"Expand camera coverage to cover primary entrances, parking areas, and the interior of the warehouse near high-value stock.\",\n        \"Establish a key-control log and re-key exterior doors if you have lost track of who holds keys.\",\n        \"Obtain quotes for a basic intrusion alarm with door contacts and a few motion detectors, even if installation occurs after the 30-day window.\",\n        \"Create a simple opening and closing checklist that includes checking doors, windows, and gates for proper locking.\"\n      ]\n    },\n    {\n      \"name\": \"Utilities & Critical Systems\",\n      \"score\": 50,\n      \"band\": \"Medium\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q36\",\n          \"issue\": \"Main electrical service size is unknown, suggesting limited understanding of capacity and loading.\"\n        },\n        {\n          \"questionId\": \"Q37\",\n          \"issue\": \"Last electrical upgrade date is unknown, raising concerns about aging infrastructure.\"\n        },\n        {\n          \"questionId\": \"Q39\",\n          \"issue\": \"No generator or backup power system is available for critical loads.\"\n        },\n        {\n          \"questionId\": \"Q40\",\n          \"issue\": \"Plumbing system has a history of small leaks and is only in fair condition.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Schedule a walkthrough with a licensed electrician to document main service size, panel conditions, and obvious risks.\",\n        \"Identify the most critical electrical loads (IT equipment, emergency lighting, key warehouse functions) and estimate their power requirements.\",\n        \"Develop a simple plan for a portable generator solution dedicated to IT and minimal life-safety loads, even if purchase happens later.\",\n        \"Log all recent plumbing leaks and have a plumber inspect the most problematic areas to prevent future breaks during storms or power loss.\",\n        \"Create a basic utility shut-off map for staff, showing where to turn off gas, water, and main electrical disconnects in an emergency.\"\n      ]\n    },\n    {\n      \"name\": \"Maintenance & Management\",\n      \"score\": 70,\n      \"band\": \"High\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q41\",\n          \"issue\": \"No formal preventive maintenance program; repairs are reactive.\"\n        },\n        {\n          \"questionId\": \"Q42\",\n          \"issue\": \"Roof is inspected only when issues arise rather than on a set schedule.\"\n        },\n        {\n          \"questionId\": \"Q43\",\n          \"issue\": \"Fire system inspection frequency is unknown.\"\n        },\n        {\n          \"questionId\": \"Q44\",\n          \"issue\": \"No formal hot-work permit process for welding or cutting.\"\n        },\n        {\n          \"questionId\": \"Q45\",\n          \"issue\": \"No vendor or contractor safety policy for on-site work.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"Create a simple preventive maintenance calendar covering roof checks, gutters/drains, fire equipment inspections, and HVAC filter changes.\",\n        \"Perform and document a basic roof inspection to identify obvious damage, ponding, or blocked drains, especially given the flood risk.\",\n        \"Draft a one-page hot-work permit form and require it for any welding, cutting, or grinding inside or near the building.\",\n        \"Develop a short vendor/contractor safety checklist to review before any contractor begins work on-site.\",\n        \"Assign a single employee as the facilities/risk coordinator responsible for keeping inspection logs and follow-up actions.\"\n      ]\n    },\n    {\n      \"name\": \"Business Continuity\",\n      \"score\": 58,\n      \"band\": \"Medium\",\n      \"topWeaknesses\": [\n        {\n          \"questionId\": \"Q51\",\n          \"issue\": \"Business continuity plan focuses only on data backup; no plan for maintaining operations after a loss.\"\n        },\n        {\n          \"questionId\": \"Q52\",\n          \"issue\": \"No backup site identified for continuing critical operations.\"\n        },\n        {\n          \"questionId\": \"Q53\",\n          \"issue\": \"Critical equipment and process dependencies are not formally documented or planned for.\"\n        }\n      ],\n      \"mitigationSteps30Day\": [\n        \"List your top three critical processes (for example, order processing, shipping, and customer service) and identify what each one needs to function (people, systems, space).\",\n        \"Identify a temporary fallback location for office work, such as remote work from home or a small leased office, and document how staff would connect to systems.\",\n        \"Document the minimum equipment, IT, and communications needed to resume operations at a basic level after a building loss.\",\n        \"Expand the existing data backup plan with a simple recovery checklist that describes who restores data, in what order, and how users reconnect.\",\n        \"Conduct a short tabletop exercise with key staff to walk through a flood scenario and record gaps in the current plan.\"\n      ]\n    }\n  ]\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        512
+      ],
+      "id": "4d1e907b-ad96-46d6-81d3-c85ebf437e51",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "ySCc1WDeVzKVNHMF",
+          "mode": "list",
+          "cachedResultName": "RiskAnalBatch",
+          "cachedResultUrl": "/projects/E6r5AlHyXsf80YUZ/datatables/ySCc1WDeVzKVNHMF"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Domain": "={{ JSON.stringify($json.output.domains, null, 2) }}",
+            "Type": "='{{ $json.output.property.type }}'",
+            "Address": "='{{ $json.output.property.address }}'",
+            "DomainName": "=''{{ $json.output.domains[0].name }}''",
+            "Notes": "=''{{ $json.output.property.notes }}''",
+            "Overall": "={{ JSON.stringify($json.output.overall, null, 2) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Domain",
+              "displayName": "Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Overall",
+              "displayName": "Overall",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "DomainName",
+              "displayName": "DomainName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        912,
+        592
+      ],
+      "id": "e1da013d-c5ba-4371-963b-fff66cf2f9f7",
+      "name": "Insert row"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "ySCc1WDeVzKVNHMF",
+          "mode": "list",
+          "cachedResultName": "RiskAnalBatch",
+          "cachedResultUrl": "/projects/E6r5AlHyXsf80YUZ/datatables/ySCc1WDeVzKVNHMF"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "DomainName",
+              "keyValue": "'Other'"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        640
+      ],
+      "id": "417131f6-be57-4aac-b91e-a7541caaafbd",
+      "name": "Get Domain Data"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "ySCc1WDeVzKVNHMF",
+          "mode": "list",
+          "cachedResultName": "RiskAnalBatch",
+          "cachedResultUrl": "/projects/E6r5AlHyXsf80YUZ/datatables/ySCc1WDeVzKVNHMF"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "DomainName",
+              "condition": "neq",
+              "keyValue": "'Other'"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        560
+      ],
+      "id": "b65e6405-978e-40d5-8e52-1904044ddd5a",
+      "name": "Get Property Data"
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "value": "ySCc1WDeVzKVNHMF",
+          "mode": "list",
+          "cachedResultName": "RiskAnalBatch",
+          "cachedResultUrl": "/projects/E6r5AlHyXsf80YUZ/datatables/ySCc1WDeVzKVNHMF"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "lt",
+              "keyValue": "=100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1536,
+        208
+      ],
+      "id": "669803ca-34da-4068-aa8f-43a139865e9d",
+      "name": "Delete row(s)"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Questionnaire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis Agent": {
+      "main": [
+        [
+          {
+            "node": "Insert row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Report Generator",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analysis Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Questionnaire": {
+      "main": [
+        [
+          {
+            "node": "Add Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Domains": {
+      "main": [
+        [
+          {
+            "node": "Split into Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split into Domains": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Analysis Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Report Generator",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Report Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Analysis Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert row": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Domain Data": {
+      "ai_tool": [
+        [
+          {
+            "node": "Report Generator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Property Data": {
+      "ai_tool": [
+        [
+          {
+            "node": "Report Generator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Database": {
+      "main": [
+        []
+      ]
+    },
+    "Report Generator": {
+      "main": [
+        [
+          {
+            "node": "Delete row(s)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Write Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6873a6e7-9824-408c-8b79-b3cc6cb5a134",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6c9f25ba50594fdb1b696d7026eb906274577ec5b8bfc18d57b4e7d7b78a6900"
+  },
+  "id": "gqmCt182UOgFdRLy",
+  "tags": []
+}

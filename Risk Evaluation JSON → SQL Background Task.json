@@ -1,0 +1,358 @@
+{
+  "name": "Risk Evaluation JSON → SQL Background Task",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "risk-evaluation",
+        "options": {}
+      },
+      "id": "406e0f3e-b5ff-4840-b847-a33b497cb691",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1392,
+        80
+      ],
+      "webhookId": "replace-with-your-own-webhook-id"
+    },
+    {
+      "parameters": {
+        "functionCode": "// The MSSQL node returns an array of rows.\n// We want to merge EvaluationId back together with the original evaluation JSON\n// from the Normalize Evaluation node.\n\n// Grab the first returned row from Insert Evaluation:\nconst evalRows = items;\nif (!evalRows[0] || evalRows[0].json.EvaluationId === undefined) {\n  throw new Error('Insert Evaluation did not return EvaluationId');\n}\n\nconst evaluationId = evalRows[0].json.EvaluationId;\n\n// Grab normalized evaluation from previous node using expression-like access\n// via binary data passing is tricky inside Function, so we expect that the\n// Insert Evaluation node kept the original input in `json._input` if we wanted.\n// Instead, we'll read it via the execution data expression pattern by\n// passing everything from Normalize Evaluation to Insert Evaluation as is.\n// In this simple workflow, we can assume that the previous json contained\n// property/overall/domains and that Insert Evaluation preserved them\n// because the node's options.output is set to inputData.\n\nconst original = evalRows[0].json;\n\n// original should contain property, overall, domains from Normalize Evaluation.\n\nreturn [\n  {\n    json: {\n      EvaluationId: evaluationId,\n      property: original.property || {},\n      overall: original.overall || {},\n      domains: original.domains || []\n    }\n  }\n];"
+      },
+      "id": "fef738a1-86b0-46a6-80d8-4783a22cf537",
+      "name": "Merge Eval & Input",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const evalId = $json[\"EvaluationId\"];\nconst domains = $json[\"domains\"] || [];\n\nconst out = [];\n\nfor (let i = 0; i < domains.length; i++) {\n  const d = domains[i];\n  out.push({\n    json: {\n      EvaluationId: evalId,\n      DomainIndex: i,\n      DomainName: d.name,\n      DomainScore: d.score,\n      DomainBand: d.band,\n      TopWeaknesses: d.topWeaknesses || [],\n      MitigationSteps30Day: d.mitigationSteps30Day || []\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "57488872-75fb-4252-9467-6198c25828ee",
+      "name": "Build Domains",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -336,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const out = [];\n\nfor (const item of items) {\n  const j = item.json;\n  const domainResultId = j.DomainResultId;\n  const weaknesses = j.TopWeaknesses || [];\n\n  for (const w of weaknesses) {\n    out.push({\n      json: {\n        DomainResultId: domainResultId,\n        QuestionId: w.questionId || null,\n        Issue: w.issue || \"\"\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "id": "9ceaac62-d7fa-49e5-ae4f-ded57c438210",
+      "name": "Build Weaknesses",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        304,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const out = [];\n\nfor (const item of items) {\n  const j = item.json;\n  const domainResultId = j.DomainResultId;\n  const steps = j.MitigationSteps30Day || [];\n\n  for (let i = 0; i < steps.length; i++) {\n    out.push({\n      json: {\n        DomainResultId: domainResultId,\n        StepOrder: i + 1,\n        Description: steps[i]\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "id": "82f6f251-9c26-4589-808c-8a8478f2c2a9",
+      "name": "Build Mitigations",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        304,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": ";\nINSERT INTO RiskEvaluationOutput (\n  JobId,\n  PropertyAddress,\n  PropertyType,\n  PropertyNotes,\n  OverallScore,\n  OverallBand,\n  OverallRationaleJson\n)\nOUTPUT INSERTED.EvaluationId\nVALUES (\n  NULL, -- or a job GUID from upstream if you have one\n  '{{ $json[\"property\"][\"address\"] }}',\n  '{{ $json[\"property\"][\"type\"] }}',\n  '{{ $json[\"property\"][\"notes\"] }}',\n  '{{ $json[\"overall\"][\"score\"] }}',\n  '{{ $json[\"overall\"][\"band\"] }}',\n  '{{ ($json.overall.rationale || []).join(\"\\n\") }}'\n);\n\n"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        -816,
+        -224
+      ],
+      "id": "bfc3ad3f-2700-466c-810a-b851e6dc35bc",
+      "name": "Microsoft SQL",
+      "credentials": {
+        "microsoftSql": {
+          "id": "VFgaiVPgKYMP90B6",
+          "name": "Microsoft SQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let body = items[0].json.body;\nif (typeof body === 'string') {\ntry {\nbody = JSON.parse(body);\n} catch (error) {\nthrow new Error('Failed to parse body as JSON: ' + error.message);\n}\n}\nif (!Array.isArray(body)) {\n  if (typeof body === 'object' && body !== null) {\n    body = [body];\n  } else {\n    throw new Error('Expected \"body\" to be an array or object, but got: ' + typeof body);\n  }\n}\nconst outputItems = body.map(entry => ({\njson: {\n//...entry,\nresults: body,\n},\n}));\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        -48
+      ],
+      "id": "03f8bf8f-cd1b-4859-968d-647e885b4fea",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -608,
+        -112
+      ],
+      "id": "9e05df44-7d2d-40d1-ab39-2fc25d7380e7",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": ";\nINSERT INTO RiskDomainResult (\n  EvaluationId,\n  DomainName,\n  DomainScore,\n  DomainBand\n)\nOUTPUT INSERTED.DomainResultId, INSERTED.DomainName\nVALUES (\n  {{ $json[\"EvaluationId\"] }},\n  '{{ $json[\"DomainName\"] }}',\n  {{ $json[\"DomainScore\"] }},\n  '{{ $json[\"DomainBand\"] }}'\n);\n"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        -96,
+        -176
+      ],
+      "id": "a4bc188a-5db3-4274-bfed-2289792f1ef6",
+      "name": "Microsoft SQL1",
+      "credentials": {
+        "microsoftSql": {
+          "id": "VFgaiVPgKYMP90B6",
+          "name": "Microsoft SQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        64,
+        32
+      ],
+      "id": "90da20a4-aac4-47c7-8d4e-65b1314052ad",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": ";\nINSERT INTO RiskDomainWeakness (\n  DomainResultId,\n  QuestionId,\n  Issue\n)\nVALUES (\n  {{ $json[\"DomainResultId\"] }},\n  '{{ $json[\"QuestionId\"] }}',\n  '{{ $json[\"Issue\"] }}'\n);\n"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        528,
+        -96
+      ],
+      "id": "b71a62e1-28b1-41b5-aa88-c3b41d0140ec",
+      "name": "Microsoft SQL2",
+      "credentials": {
+        "microsoftSql": {
+          "id": "VFgaiVPgKYMP90B6",
+          "name": "Microsoft SQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": ";\nINSERT INTO RiskDomainMitigationStep (\n  DomainResultId,\n  StepOrder,\n  Description\n)\nVALUES (\n  {{ $json[\"DomainResultId\"] }},\n  {{ $json[\"StepOrder\"] }},\n  '{{ $json[\"Description\"] }}'\n);"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        144
+      ],
+      "id": "9887ee9d-acb6-48f0-9360-efdc76070eb7",
+      "name": "Microsoft SQL3",
+      "credentials": {
+        "microsoftSql": {
+          "id": "VFgaiVPgKYMP90B6",
+          "name": "Microsoft SQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Expecting input like: [ { output: { property, overall, domains } } ]\n// n8n \"items\" => items[0].json is the first element of that array.\nconst raw =$input.first().json.results\n//const raw = items[0].json;\n\n// If the outer shape is an array of objects, adjust here.\n// For safety:\nlet evaluation = raw;\nif (Array.isArray(raw)) {\n  evaluation = raw[0];\n}\n\n// Ensure we have evaluation.output\nif (!evaluation.output) {\n throw new Error('Missing \"output\" object in JSON.');\n}\n\n// Return a single n8n item with the flattened structure\nreturn [\n  {\n    json: {\n      property: evaluation.output.property,\n      overall: evaluation.output.overall,\n      domains: evaluation.output.domains\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -992,
+        -48
+      ],
+      "id": "395b5595-79a9-4631-841d-a0bbfe72ba8a",
+      "name": "Normalize Jscript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Eval & Input": {
+      "main": [
+        [
+          {
+            "node": "Build Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft SQL": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Normalize Jscript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Merge Eval & Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Domains": {
+      "main": [
+        [
+          {
+            "node": "Microsoft SQL1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Microsoft SQL1": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Build Weaknesses",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Mitigations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Weaknesses": {
+      "main": [
+        [
+          {
+            "node": "Microsoft SQL2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Mitigations": {
+      "main": [
+        [
+          {
+            "node": "Microsoft SQL3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Jscript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Microsoft SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "57382ff6-d365-41a2-b72c-cfa1225f7791",
+  "meta": {
+    "instanceId": "6c9f25ba50594fdb1b696d7026eb906274577ec5b8bfc18d57b4e7d7b78a6900"
+  },
+  "id": "t5H6Ow7fdDsJCL6Q",
+  "tags": []
+}
